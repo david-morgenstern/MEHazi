@@ -44,16 +44,17 @@ task3   ┌───────────────────────
 
 ## Running everything
 
-Docker is the only prerequisite.
+Docker is the only prerequisite. There is nothing to configure first: the `.env`
+files are committed with working defaults.
 
 ```bash
+git clone https://github.com/david-morgenstern/MEHazi.git
+cd MEHazi
 ./build-all.sh      # build and start all three, in order
 ./teardown.sh       # stop everything and delete the data
 ```
 
-`build-all.sh` creates the `.env` files it needs from the committed examples
-(generating Superset's secret key), then waits for each stage to *finish* rather
-than merely start — the pipeline to exit 0, Superset to report healthy, all six
+`build-all.sh` waits for each stage to *finish* rather than merely start — the pipeline to exit 0, Superset to report healthy, all six
 of task 2's integrity checks to pass — and fails loudly, naming the log to read,
 if any of them does not. Running it again over a live stack is a harmless
 re-verification. `--no-cache` rebuilds every image from scratch; `teardown.sh
