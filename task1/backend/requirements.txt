@@ -1,0 +1,5 @@
+# Pinned so an image built today and one built next month behave the same.
+pandas==3.0.5
+pyarrow==25.0.0
+yfinance==1.5.2
+psycopg2-binary==2.9.11

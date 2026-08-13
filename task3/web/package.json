@@ -1,0 +1,16 @@
+{
+  "name": "mehazi-web",
+  "private": true,
+  "type": "module",
+  "description": "Front end for the task3 sensor API. Svelte compiles to plain DOM calls, so the built bundle carries no framework runtime worth the name.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^5.0.0",
+    "svelte": "^5.0.0",
+    "vite": "^6.0.0"
+  }
+}

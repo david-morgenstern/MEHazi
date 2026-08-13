@@ -1,0 +1,6 @@
+# Pinned so an image built today and one built next month behave the same.
+# The front end is pinned the same way, in web/package-lock.json.
+fastapi==0.141.1
+uvicorn[standard]==0.52.1
+psycopg[binary,pool]==3.3.4
+pydantic-settings==2.15.0

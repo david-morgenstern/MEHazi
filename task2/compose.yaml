@@ -1,0 +1,67 @@
+name: mehazi-task2
+
+# generate -> transform -> parquet -> postgres -> checks, as four containers
+# that each run once and exit, except the database.
+
+services:
+  db:
+    build: ./db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-sensors}
+      POSTGRES_USER: ${POSTGRES_USER:-sensors}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sensors}
+    ports:
+      # 5432 on the host belongs to task1, so this stack takes the next one.
+      # Inside the network it is still plain 5432.
+      - "${DB_PORT:-5433}:5432"
+    volumes:
+      - db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sensors} -d ${POSTGRES_DB:-sensors}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  pipeline:
+    build: .
+    command: ["main.py"]
+    environment:
+      NUM_ROWS: ${NUM_ROWS:-1000000}
+      OUTPUT_DIR: /data/output
+    volumes:
+      - data:/data
+
+  loader:
+    build: .
+    command: ["load.py"]
+    environment:
+      OUTPUT_DIR: /data/output
+      PGHOST: db
+      PGDATABASE: ${POSTGRES_DB:-sensors}
+      PGUSER: ${POSTGRES_USER:-sensors}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-sensors}
+    volumes:
+      - data:/data
+    depends_on:
+      db:
+        condition: service_healthy
+      # Nothing to load until the parquet is on the volume.
+      pipeline:
+        condition: service_completed_successfully
+
+  checks:
+    # The database image again, for the psql client and the baked-in queries.
+    build: ./db
+    entrypoint: ["psql", "-v", "ON_ERROR_STOP=1", "-f", "/checks.sql"]
+    environment:
+      PGHOST: db
+      PGDATABASE: ${POSTGRES_DB:-sensors}
+      PGUSER: ${POSTGRES_USER:-sensors}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-sensors}
+    depends_on:
+      loader:
+        condition: service_completed_successfully
+
+volumes:
+  data:   # the parquet handover between pipeline and loader
+  db:     # the database itself

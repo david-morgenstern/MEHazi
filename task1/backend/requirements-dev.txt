@@ -1,0 +1,4 @@
+# Test-only dependencies, kept out of requirements.txt so the runtime image
+# never carries a test runner.
+-r requirements.txt
+pytest==9.0.1

@@ -1,0 +1,145 @@
+name: mehazi
+
+# Three layers, one network:
+#
+#   db        postgres — the analytics data, and Superset's own state
+#   backend   the pipeline — fetches, cleans and loads, then exits
+#   superset  the UI — imports its dashboard on start, then serves it
+#
+# Each is a self-contained image: config is baked in, not mounted,
+# so any one of them runs on its own with `docker run` given the same
+# environment. Only Superset is published, and it is published on every
+# interface so colleagues can reach it at http://<your-hostname>:8088.
+
+# Docker injects the host's proxy settings into builds, but those point at
+# 127.0.0.1 — which inside the build container is the build container. Route to
+# the same proxy on the host instead. Harmless when PROXY is empty.
+x-build-proxy: &build-proxy
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  args:
+    http_proxy: ${PROXY}
+    https_proxy: ${PROXY}
+
+services:
+  db:
+    build:
+      context: ./db
+      <<: *build-proxy
+    image: mehazi-db:1
+    container_name: mehazi-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_SUPERUSER}
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD}
+      POSTGRES_DB: postgres
+      # consumed by the bootstrap script baked into the image
+      ANALYTICS_DB: ${ANALYTICS_DB}
+      ANALYTICS_USER: ${ANALYTICS_USER}
+      ANALYTICS_PASSWORD: ${ANALYTICS_PASSWORD}
+      SUPERSET_DB: ${SUPERSET_DB}
+      SUPERSET_DB_USER: ${SUPERSET_DB_USER}
+      SUPERSET_DB_PASSWORD: ${SUPERSET_DB_PASSWORD}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_SUPERUSER} -d ${ANALYTICS_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - mehazi
+
+  backend:
+    build:
+      context: ./backend
+      <<: *build-proxy
+    image: mehazi-backend:1
+    container_name: mehazi-backend
+    # A batch job, not a service: it runs the pipeline and exits 0. Compose
+    # runs it once on `up`; run it again any time with
+    #   docker compose run --rm backend
+    restart: "no"
+    # yfinance is on the public internet, so this needs the proxy at runtime
+    # too, not only while building.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      # libpq reads these; nothing in the code spells out a connection string
+      PGHOST: db
+      PGPORT: 5432
+      PGDATABASE: ${ANALYTICS_DB}
+      PGUSER: ${ANALYTICS_USER}
+      PGPASSWORD: ${ANALYTICS_PASSWORD}
+      TICKERS: ${TICKERS}
+      PERIOD: ${PERIOD}
+      INTERVAL: ${INTERVAL}
+      HTTP_PROXY: ${PROXY}
+      HTTPS_PROXY: ${PROXY}
+      http_proxy: ${PROXY}
+      https_proxy: ${PROXY}
+      NO_PROXY: db,localhost,127.0.0.1
+      no_proxy: db,localhost,127.0.0.1
+    volumes:
+      # the parquet cache, so a rerun refetches nothing it already has
+      - backend-cache:/data
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - mehazi
+
+  superset:
+    build:
+      context: ./superset
+      <<: *build-proxy
+    image: mehazi-superset:1
+    container_name: mehazi-superset
+    restart: unless-stopped
+    ports:
+      # every interface, not just loopback — this is the one thing colleagues
+      # need to reach
+      - "0.0.0.0:${SUPERSET_HOST_PORT}:8088"
+    environment:
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY}
+      SUPERSET_ADMIN_USERNAME: ${SUPERSET_ADMIN_USERNAME}
+      SUPERSET_ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD}
+      SUPERSET_ADMIN_EMAIL: ${SUPERSET_ADMIN_EMAIL}
+      SUPERSET_LOAD_EXAMPLES: "no"
+      # Superset's own state
+      PGHOST: db
+      PGUSER: ${SUPERSET_DB_USER}
+      PGPASSWORD: ${SUPERSET_DB_PASSWORD}
+      SUPERSET_DB: ${SUPERSET_DB}
+      SUPERSET_DB_USER: ${SUPERSET_DB_USER}
+      SUPERSET_DB_PASSWORD: ${SUPERSET_DB_PASSWORD}
+      # Not Superset's own connection — these are what the entrypoint puts back
+      # into the imported dashboard's connection, which an export strips.
+      ANALYTICS_DB: ${ANALYTICS_DB}
+      ANALYTICS_USER: ${ANALYTICS_USER}
+      ANALYTICS_PASSWORD: ${ANALYTICS_PASSWORD}
+    volumes:
+      - superset-home:/app/superset_home
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request; urllib.request.urlopen('http://localhost:8088/health')"
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 90s
+    networks:
+      - mehazi
+
+networks:
+  mehazi:
+    name: mehazi
+
+volumes:
+  db-data:
+  backend-cache:
+  superset-home:

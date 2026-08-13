@@ -1,0 +1,9 @@
+# The runtime image needs the pipeline and its requirements, nothing else.
+# Without this, a local .venv created to run the tests would be uploaded to the
+# daemon as build context on every build.
+.venv/
+__pycache__/
+*.py[cod]
+tests/
+pytest.ini
+requirements-dev.txt

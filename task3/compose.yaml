@@ -1,0 +1,53 @@
+name: mehazi-task3
+
+# One service. The database is task2's, reached over task2's network, so this
+# stack owns no data and duplicates no credentials -- only the port the browser
+# talks to is published here.
+
+services:
+  api:
+    build:
+      context: .
+      # Docker injects the host's proxy settings into builds, but those point at
+      # 127.0.0.1 — which inside the build container is the build container.
+      # Route npm and pip to the same proxy on the host instead. Harmless when
+      # PROXY is empty.
+      extra_hosts:
+        - "host.docker.internal:host-gateway"
+      args:
+        http_proxy: ${PROXY:-}
+        https_proxy: ${PROXY:-}
+    image: mehazi-task3-api:1
+    container_name: mehazi-task3-api
+    restart: unless-stopped
+    ports:
+      # Every interface, like task1's Superset: this is the one thing anyone
+      # else needs to reach.
+      - "0.0.0.0:${API_PORT:-8000}:8000"
+    environment:
+      # libpq's own names, so the API connects the way psql would.
+      PGHOST: ${PGHOST:-db}
+      PGPORT: ${PGPORT:-5432}
+      PGDATABASE: ${POSTGRES_DB:-sensors}
+      PGUSER: ${POSTGRES_USER:-sensors}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-sensors}
+    healthcheck:
+      # No curl in a slim image, and no reason to add one.
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - task2
+
+networks:
+  # task2's network, joined rather than created: `db` resolves inside it, so
+  # nothing here needs to know which host port task2 published.
+  task2:
+    name: ${TASK2_NETWORK:-mehazi-task2_default}
+    external: true

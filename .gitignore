@@ -1,0 +1,12 @@
+# .env is versioned on purpose: it carries the development defaults, so the
+# stacks come up on a fresh clone with nothing to fill in.
+
+.idea/
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# Parquet from a local (non-compose) run of task2; the compose stack keeps its
+# own in a volume.
+output/
