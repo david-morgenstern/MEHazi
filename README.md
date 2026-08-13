@@ -54,8 +54,9 @@ cd MEHazi
 ./teardown.sh       # stop everything and delete the data
 ```
 
-`build-all.sh` waits for each stage to *finish* rather than merely start — the pipeline to exit 0, Superset to report healthy, all six
-of task 2's integrity checks to pass — and fails loudly, naming the log to read,
+`build-all.sh` waits for each stage to *finish* rather than merely start — the
+pipeline to exit 0, Superset to report healthy, all six of task 2's integrity
+checks to pass — and fails loudly, naming the log to read,
 if any of them does not. Running it again over a live stack is a harmless
 re-verification. `--no-cache` rebuilds every image from scratch; `teardown.sh
 --images` also deletes them.
