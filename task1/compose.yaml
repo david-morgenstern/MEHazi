@@ -100,7 +100,7 @@ services:
     ports:
       # every interface, not just loopback — this is the one thing colleagues
       # need to reach
-      - "0.0.0.0:${SUPERSET_HOST_PORT}:8088"
+      - "0.0.0.0:${SUPERSET_HOST_PORT:-8088}:8088"
     environment:
       SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY}
       SUPERSET_ADMIN_USERNAME: ${SUPERSET_ADMIN_USERNAME}
