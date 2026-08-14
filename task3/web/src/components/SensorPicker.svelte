@@ -15,16 +15,28 @@
   $effect(() => {
     const wanted = fragment
     loading = true
+
+    // The debounce stops a queued request, not one already in flight, and a
+    // broad fragment takes longer than the narrower one typed after it -- so
+    // without this the results for 'a' can land on top of the results for
+    // 'a3'. Superseded means the answer is to a question no longer being asked.
+    let superseded = false
+
     const timer = setTimeout(async () => {
       try {
-        list = await get('/sensors', { q: wanted, limit: LIMIT })
+        const result = await get('/sensors', { q: wanted, limit: LIMIT })
+        if (!superseded) list = result
       } catch (problem) {
-        onerror(problem)
+        if (!superseded) onerror(problem)
       } finally {
-        loading = false
+        if (!superseded) loading = false
       }
     }, 200)
-    return () => clearTimeout(timer)
+
+    return () => {
+      superseded = true
+      clearTimeout(timer)
+    }
   })
 
   // The API only accepts base-36 fragments, so keep the input to what it will

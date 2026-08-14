@@ -72,16 +72,22 @@ ORDER BY sensor_id
 LIMIT %(limit)s
 """
 
+# No GROUP BY: an ungrouped aggregate returns exactly one row whether the
+# sensor has a million readings or none, so "no such sensor" is readings = 0
+# rather than an absent row. Grouping by location instead would return one row
+# per location and quietly summarise only the first of them -- task2 guarantees
+# a sensor reports from one place, but that is its invariant to keep, not a
+# thing this query should depend on.
 SENSOR_SUMMARY = """
-SELECT location,
+SELECT min(location)                                             AS location,
        count(*)                                                  AS readings,
        min(reading_date)                                         AS first_reading,
        max(reading_date)                                         AS last_reading,
        count(*) FILTER (WHERE status = 'Bad')                    AS bad_readings,
-       round(100.0 * count(*) FILTER (WHERE status = 'Bad') / count(*), 3) AS bad_pct
+       -- nullif, because the no-such-sensor row divides by zero otherwise.
+       round(100.0 * count(*) FILTER (WHERE status = 'Bad') / nullif(count(*), 0), 3) AS bad_pct
 FROM readings
 WHERE sensor_id = %(sensor_id)s
-GROUP BY location
 """
 
 SENSOR_PARAMETERS = """
@@ -123,7 +129,10 @@ async def health(pool: Pool) -> Health:
         "SELECT (SELECT count(*) FROM readings)       AS readings,"
         "       (SELECT count(*) FROM location_stats) AS summaries",
     )
-    return Health(status="ok", **row)
+    # task2's image creates the schema when its database first starts, so the
+    # tables exist long before the pipeline fills them. Reachable but empty is
+    # a real state, and saying "ok" to it would be a lie the front end repeats.
+    return Health(status="ok" if row["readings"] else "empty", **row)
 
 
 @router.get(
@@ -160,7 +169,7 @@ async def list_sensors(pool: Pool, query: Annotated[SensorQuery, Query()]) -> Se
 )
 async def sensor_summary(pool: Pool, sensor_id: SensorId) -> SensorSummary:
     overall = await fetch_one(pool, SENSOR_SUMMARY, {"sensor_id": sensor_id})
-    if overall is None:
+    if not overall["readings"]:
         # A well-formed id that nothing was ever recorded against. 404 rather
         # than an empty summary: the caller asked about something that is not
         # there, and should be able to tell that from a slow day.
@@ -219,9 +228,16 @@ async def sensor_readings(
         {filter}
         -- The sort column is an identifier, which cannot be bound as a value.
         -- It is safe to compose here only because SortField validated it
-        -- against a fixed set of columns before we got this far. reading_no
-        -- breaks ties, so paging never shows the same row twice.
-        ORDER BY {column} {direction}, reading_no
+        -- against a fixed set of columns before we got this far.
+        --
+        -- (parameter, reading_no) is the tie-break, not reading_no alone:
+        -- reading_no counts within a sensor's history of one parameter, so a
+        -- sensor has six rows numbered 1 and ties on it. Together with the
+        -- sensor_id already fixed by the filter, those two are the primary
+        -- key, which makes this a total order -- without it, two rows sharing
+        -- a sort value can swap between pages, showing one twice and hiding
+        -- the other.
+        ORDER BY {column} {direction}, parameter, reading_no
         LIMIT %(limit)s OFFSET %(offset)s
         """
     ).format(

@@ -73,7 +73,13 @@ async def invalid_request(request: Request, exc: RequestValidationError) -> JSON
 
 @app.exception_handler(HTTPException)
 async def http_error(request: Request, exc: HTTPException) -> JSONResponse:
-    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+    # headers carried through: 405 and 401 are only useful with the Allow and
+    # WWW-Authenticate they come with.
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+        headers=exc.headers,
+    )
 
 
 @app.exception_handler(Exception)

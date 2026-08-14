@@ -134,16 +134,25 @@ step "task3 — API and web page"
 compose task3 build $BUILD_ARGS
 compose task3 up -d
 wait_healthy task3 api 300
-info "$(curl -s localhost:8000/api/health)"
 
 # --- done ------------------------------------------------------------------
 
-port=$(grep -E '^SUPERSET_HOST_PORT=' task1/.env | cut -d= -f2)
-user=$(grep -E '^SUPERSET_ADMIN_USERNAME=' task1/.env | cut -d= -f2)
-pass=$(grep -E '^SUPERSET_ADMIN_PASSWORD=' task1/.env | cut -d= -f2)
+# Read from the .env files rather than repeated here, so a changed port shows
+# up in the summary instead of sending you to one nothing is listening on.
+# `|| true` because pipefail makes a grep that matched nothing a failed
+# pipeline, and a missing setting should fall back, not end the run.
+setting() { { grep -E "^$2=" "$1/.env" 2>/dev/null || true; } | cut -d= -f2; }
+
+port=$(setting task1 SUPERSET_HOST_PORT)
+user=$(setting task1 SUPERSET_ADMIN_USERNAME)
+pass=$(setting task1 SUPERSET_ADMIN_PASSWORD)
+db_port=$(setting task2 DB_PORT); db_port=${db_port:-5433}
+api_port=$(setting task3 API_PORT); api_port=${api_port:-8000}
+
+info "$(curl -s "localhost:${api_port}/api/health")"
 
 printf '\n\033[1;32mall three stacks are up\033[0m\n\n'
 printf '    task1  dashboard   http://localhost:%s   (%s / %s)\n' "$port" "$user" "$pass"
-printf '    task2  database    localhost:5433        (psql -U sensors -d sensors)\n'
-printf '    task3  web page    http://localhost:8000\n'
-printf '    task3  API docs    http://localhost:8000/docs\n\n'
+printf '    task2  database    localhost:%s        (psql -U sensors -d sensors)\n' "$db_port"
+printf '    task3  web page    http://localhost:%s\n' "$api_port"
+printf '    task3  API docs    http://localhost:%s/docs\n\n' "$api_port"

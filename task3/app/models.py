@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from datetime import date
 from enum import Enum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -176,7 +177,10 @@ class LocationStats(BaseModel):
 class Health(BaseModel):
     """Whether the API can see the data, and how much of it there is."""
 
-    status: str = Field(examples=["ok"])
+    status: Literal["ok", "empty"] = Field(
+        description="'empty' when the tables are reachable but task2 has not filled them.",
+        examples=["ok"],
+    )
     readings: int
     summaries: int
 
