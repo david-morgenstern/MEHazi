@@ -6,6 +6,7 @@ The variable names are libpq's own, so the same environment that would let
 
 from __future__ import annotations
 
+from psycopg.conninfo import make_conninfo
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -30,10 +31,16 @@ class Settings(BaseSettings):
 
     @property
     def conninfo(self) -> str:
-        return (
-            f"host={self.pghost} port={self.pgport} dbname={self.pgdatabase} "
-            f"user={self.pguser} password={self.pgpassword} "
-            "application_name=task3-api"
+        # Assembled by psycopg rather than by f-string: a password containing a
+        # space or a quote is legal, and would otherwise produce a connection
+        # string that parses into something else entirely.
+        return make_conninfo(
+            host=self.pghost,
+            port=self.pgport,
+            dbname=self.pgdatabase,
+            user=self.pguser,
+            password=self.pgpassword,
+            application_name="task3-api",
         )
 
 
