@@ -10,3 +10,8 @@ __pycache__/
 # Parquet from a local (non-compose) run of task2; the compose stack keeps its
 # own in a volume.
 output/
+
+# task3's front end, from a local `npm install` / `npm run build`. The image
+# builds both itself, from the lockfile, in its node stage.
+node_modules/
+dist/

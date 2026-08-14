@@ -32,13 +32,15 @@ cd ../task3 && docker compose up -d --build
 
 Then open **<http://localhost:8000>**, or **<http://localhost:8000/docs>** for
 the API's own documentation, which is generated from the pydantic models and can
-issue requests itself.
+issue requests itself. The page itself runs offline; `/docs` is the one thing
+here that does not, because FastAPI loads Swagger UI from a CDN.
 
 Behind a corporate proxy, the build needs a route to it — npm and pip are the
 only things that reach the internet:
 
 ```bash
-sed -i 's|^PROXY=.*|PROXY=http://host.docker.internal:3128|' .env
+# -i.bak, then remove it: the one spelling that works on GNU and BSD sed alike.
+sed -i.bak 's|^PROXY=.*|PROXY=http://host.docker.internal:3128|' .env && rm -f .env.bak
 ```
 
 Colleagues on the same network use your hostname: `http://<your-hostname>:8000`.
@@ -50,7 +52,7 @@ at `/docs` is generated from the same code that produces the responses.
 
 | Endpoint | Returns |
 | --- | --- |
-| `GET /api/health` | whether the database is visible, and how much is in it |
+| `GET /api/health` | whether the database is visible, and how much is in it — `"empty"` rather than `"ok"` when the tables are there but task2 has not filled them |
 | `GET /api/sensors?q=&limit=` | sensor ids, optionally narrowed by a fragment |
 | `GET /api/sensors/{id}` | one sensor summarised: location, span, bad rate, and per-parameter mean, σ, min and max |
 | `GET /api/sensors/{id}/readings?…` | that sensor's processed readings — filtered, sorted, paged |
@@ -64,17 +66,23 @@ curl -s 'localhost:8000/api/sensors/003v9hy/readings?parameter=Offset&sort=value
 ### The sensor list is a skip scan
 
 Five thousand sensors live in a million rows, and `SELECT DISTINCT sensor_id`
-reads all million to return five thousand — 300ms, on every keystroke. Postgres
-has no skip scan of its own, so `routes.py` asks for one with a recursive CTE
-that walks the primary key from each distinct value to the next. Same index,
-same answer, 75ms.
+reads all million to return five thousand — a parallel sequential scan of the
+whole table, on every keystroke. Postgres has no skip scan of its own, so
+`routes.py` asks for one with a recursive CTE that walks the primary key from
+each distinct value to the next: five thousand index lookups instead of a
+million row reads. Same index, same answer, and the work no longer grows with
+the number of readings — only with the number of sensors.
+
+The wall-clock gap on a million warm rows is smaller than that makes it sound
+(tens of milliseconds either way). It is the scaling that earns the CTE, not
+the stopwatch.
 
 ### Validation, and why the sort parameter is an enum
 
 Pydantic checks everything on the way in. A sensor id must match
-`^[0-9a-z]{7}$`, `limit` must be 1–500, `parameter` must be one of the six, and
-an unrecognised query parameter is an error rather than silence — `?srot=value`
-is a typo worth hearing about.
+`^[0-9a-z]{7}$`, `limit` is bounded (1–500 a page of readings, 1–5000 the sensor
+list), `parameter` must be one of the six, and an unrecognised query parameter
+is an error rather than silence — `?srot=value` is a typo worth hearing about.
 
 `sort` is a special case. A column name cannot be bound as a parameter the way a
 value can, so it has to be interpolated into the SQL — which is only safe
@@ -95,7 +103,7 @@ page can show what went wrong without knowing which kind of failure it was.
 | --- | --- |
 | `404` | a well-formed sensor id that has no readings |
 | `422` | anything pydantic rejected, flattened to one readable line |
-| `503` | the database is unreachable, or task2 never loaded it |
+| `503` | the database is unreachable, or its tables do not exist yet |
 | `500` | a bug: logged in full, reported without the internals |
 
 The 503 is worth its own note. The pool opens without waiting for a first
@@ -206,6 +214,7 @@ Nobody needs node to *build* it — that happens in the image.
 ```
 compose.yaml              one service, joined to task2's network
 Dockerfile                node builds the page, pip builds a venv, neither ships
+.dockerignore             keeps a local node_modules out of the image
 requirements.txt          pinned
 .env.example              every setting, documented
 

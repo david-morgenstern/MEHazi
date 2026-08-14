@@ -17,7 +17,10 @@ services:
       args:
         http_proxy: ${PROXY:-}
         https_proxy: ${PROXY:-}
-    image: mehazi-task3-api:1
+    # No explicit image: compose names a built image after the project and the
+    # service, which is this same name. Pinning a tag here only creates a way
+    # for `up -d` without --build to keep running an image the code moved on
+    # from.
     container_name: mehazi-task3-api
     restart: unless-stopped
     ports:

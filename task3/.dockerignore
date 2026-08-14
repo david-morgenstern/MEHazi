@@ -1,0 +1,24 @@
+# What must not reach the build context.
+#
+# node_modules is the one that matters. The Dockerfile installs from the
+# lockfile and then copies web/, so a node_modules built on the host -- which
+# `npm install`, per the README's developing section, leaves right there --
+# would land on top of `npm ci` and put the host's platform binaries in a linux
+# image. The lockfile pinning would still be documented and no longer true.
+web/node_modules/
+web/dist/
+
+# Rebuilt in the image against a different Python than whatever wrote these.
+# The `**/` is load-bearing: unlike .gitignore, a bare `__pycache__` here only
+# matches one at the root of the context, not app/__pycache__.
+**/__pycache__
+**/*.py[cod]
+**/.venv
+
+# The runtime reads its settings from the environment compose passes; a copy
+# baked into a layer is only a way for the two to disagree.
+.env
+.env.example
+
+README.md
+.dockerignore
