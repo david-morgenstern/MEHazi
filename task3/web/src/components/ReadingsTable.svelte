@@ -32,10 +32,25 @@
   $effect(() => {
     const request = { ...query }
     loading = true
+
+    // Responses can arrive out of order -- click Next twice and the first
+    // request may land last -- so a superseded one is dropped rather than
+    // painted over the newer rows. The teardown runs when the effect re-runs,
+    // which is exactly when this request stopped being the one we asked for.
+    let superseded = false
+
     get(`/sensors/${sensorId}/readings`, request)
-      .then((result) => (page = result))
-      .catch(onerror)
-      .finally(() => (loading = false))
+      .then((result) => {
+        if (!superseded) page = result
+      })
+      .catch((problem) => {
+        if (!superseded) onerror(problem)
+      })
+      .finally(() => {
+        if (!superseded) loading = false
+      })
+
+    return () => (superseded = true)
   })
 
   function sortBy(column) {
@@ -53,9 +68,12 @@
     query.offset = 0
   }
 
+  // Counted off the response, not the request: the API echoes back the offset
+  // it actually served, so the label describes the rows on screen even while a
+  // newer request is still in flight or has just failed.
   const shown = $derived(page ? page.items.length : 0)
-  const from = $derived(shown ? query.offset + 1 : 0)
-  const to = $derived(query.offset + shown)
+  const from = $derived(shown ? page.offset + 1 : 0)
+  const to = $derived(page ? page.offset + shown : 0)
   const hasMore = $derived(page ? to < page.total : false)
 </script>
 
@@ -126,7 +144,7 @@
             <td
               class="num"
               class:none={row.z_score === null}
-              class:outlier={Math.abs(row.z_score) > 2}
+              class:outlier={row.z_score !== null && Math.abs(row.z_score) > 2}
             >
               {round(row.z_score, 2)}
             </td>
