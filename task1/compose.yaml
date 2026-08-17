@@ -18,8 +18,8 @@ x-build-proxy: &build-proxy
   extra_hosts:
     - "host.docker.internal:host-gateway"
   args:
-    http_proxy: ${PROXY}
-    https_proxy: ${PROXY}
+    http_proxy: ${PROXY:-}
+    https_proxy: ${PROXY:-}
 
 services:
   db:
@@ -75,10 +75,10 @@ services:
       TICKERS: ${TICKERS}
       PERIOD: ${PERIOD}
       INTERVAL: ${INTERVAL}
-      HTTP_PROXY: ${PROXY}
-      HTTPS_PROXY: ${PROXY}
-      http_proxy: ${PROXY}
-      https_proxy: ${PROXY}
+      HTTP_PROXY: ${PROXY:-}
+      HTTPS_PROXY: ${PROXY:-}
+      http_proxy: ${PROXY:-}
+      https_proxy: ${PROXY:-}
       NO_PROXY: db,localhost,127.0.0.1
       no_proxy: db,localhost,127.0.0.1
     volumes:

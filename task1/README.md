@@ -278,10 +278,22 @@ PERIOD=10y
 docker compose run --rm backend
 ```
 
-`PROXY` is only needed behind a corporate proxy. Docker injects the host's proxy
-settings into containers, but those point at `127.0.0.1`, which inside a
-container is the container itself — so set `PROXY` to the same proxy reached
-through `host.docker.internal`.
+`PROXY` is only needed behind a corporate proxy, and `build-all.sh` fills it in
+by itself: it probes for a direct route out, and only when there is none does it
+look for the proxy this host uses — the environment first, then
+`~/.docker/config.json` — and check that it answers. So `PROXY=` stays empty in
+the committed `.env`, and the same checkout builds on a home network and behind
+the proxy without being edited for either.
+
+A proxy on the host's loopback has to be renamed on the way in. Docker injects
+the host's proxy settings into containers, but those point at `127.0.0.1`, which
+inside a container is the container itself; the compose file pins
+`host.docker.internal` to the host gateway, and the probe rewrites the address to
+match. Driving compose directly, do the same by hand:
+
+```bash
+PROXY=http://host.docker.internal:3128 docker compose up -d --build
+```
 
 ## Layout
 

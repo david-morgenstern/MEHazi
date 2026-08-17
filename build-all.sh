@@ -101,6 +101,78 @@ else
     info "task3/.env exists, left alone"
 fi
 
+# --- network ---------------------------------------------------------------
+#
+# Whether this machine needs a proxy to reach the internet is a property of the
+# network it is sitting on, not of the project, so it is detected rather than
+# configured. On an ordinary connection nothing is set and the builds go
+# straight out; behind a corporate proxy PROXY is exported, and the compose
+# files route the builds — and the backend's calls to yfinance — through it.
+#
+# Exporting is what makes this win over the .env files: compose prefers the
+# shell environment, so `PROXY=` stays the committed default and only the
+# machines that actually need a proxy get one. Setting PROXY yourself still
+# beats the detection.
+
+step "network"
+
+# Can we get out without help? --noproxy '*' so an http_proxy already in the
+# environment cannot make a proxied connection look like a direct one, and
+# --head because the answer is in the status line: /simple/ is a 45MB index, and
+# downloading it would lose this race on a connection that is perfectly fine.
+direct_ok() { curl -fsS --noproxy '*' --head --max-time 6 -o /dev/null https://pypi.org/simple/ >/dev/null 2>&1; }
+
+# Generous, and one retry: a corporate proxy's first connection can be slow
+# enough to lose a short race, and the cost of deciding "no proxy" wrongly is a
+# build that dies on a DNS error several minutes later. Only reached once the
+# direct probe has already failed, so it never delays a normal connection.
+proxy_ok() { curl -fsS --proxy "$1" --head --max-time 20 --retry 1 -o /dev/null https://pypi.org/simple/ >/dev/null 2>&1; }
+
+# The proxy this host uses: the environment first, then Docker's own
+# configuration, which is where Docker Desktop and corporate images put it.
+# grep rather than jq, which is not a prerequisite of this project.
+host_proxy() {
+    local p
+    for p in "${https_proxy:-}" "${HTTPS_PROXY:-}" "${http_proxy:-}" "${HTTP_PROXY:-}"; do
+        [ -n "$p" ] && { printf '%s' "$p"; return; }
+    done
+    # `|| true` because pipefail makes a grep that matched nothing a failed
+    # pipeline, and "no proxy configured" is an answer, not an error.
+    { grep -oE '"https?Proxy"[[:space:]]*:[[:space:]]*"[^"]+"' "${HOME}/.docker/config.json" 2>/dev/null || true; } \
+        | head -1 | sed -E 's/.*"([^"]+)"$/\1/'
+}
+
+# A proxy on the host's loopback has to be renamed before a container can use
+# it: 127.0.0.1 inside a container is the container. host.docker.internal is
+# what the compose files pin to the host gateway for exactly this.
+for_containers() { printf '%s' "$1" | sed -E 's#(^|//|@)(127\.0\.0\.1|localhost|\[::1\])#\1host.docker.internal#'; }
+
+if [ -n "${PROXY:-}" ]; then
+    PROXY=$(for_containers "$PROXY")
+    info "PROXY set in the environment: $PROXY"
+elif ! command -v curl >/dev/null 2>&1; then
+    PROXY=
+    info "no curl to probe with — assuming direct internet access"
+elif direct_ok; then
+    PROXY=
+    info "direct internet access, no proxy needed"
+else
+    candidate=$(host_proxy)
+    if [ -n "$candidate" ] && proxy_ok "$candidate"; then
+        PROXY=$(for_containers "$candidate")
+        info "no direct route out; building through the host's proxy at $PROXY"
+    elif [ -n "$candidate" ]; then
+        PROXY=
+        info "no direct route out, and this host's proxy ($candidate) did not answer"
+        info "builds will fail until one of the two works; override with:  PROXY=... $0"
+    else
+        PROXY=
+        info "no direct route out, and no proxy configured on this host"
+        info "if you are behind one, rerun as:  PROXY=http://host.docker.internal:PORT $0"
+    fi
+fi
+export PROXY
+
 # --- task1 -----------------------------------------------------------------
 
 step "task1 — fetch, clean, load, and the dashboard"
