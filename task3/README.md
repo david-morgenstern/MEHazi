@@ -36,11 +36,15 @@ issue requests itself. The page itself runs offline; `/docs` is the one thing
 here that does not, because FastAPI loads Swagger UI from a CDN.
 
 Behind a corporate proxy, the build needs a route to it — npm and pip are the
-only things that reach the internet:
+only things that reach the internet. `../build-all.sh` sorts this out on its
+own: it probes for a direct route and, finding none, hands the build the proxy
+this host uses, so `PROXY=` stays empty in the committed `.env` and the same
+checkout builds at home and at work. Driving compose directly, supply it
+yourself — `host.docker.internal`, not `127.0.0.1`, which inside a container is
+the container:
 
 ```bash
-# -i.bak, then remove it: the one spelling that works on GNU and BSD sed alike.
-sed -i.bak 's|^PROXY=.*|PROXY=http://host.docker.internal:3128|' .env && rm -f .env.bak
+PROXY=http://host.docker.internal:3128 docker compose up -d --build
 ```
 
 Colleagues on the same network use your hostname: `http://<your-hostname>:8000`.

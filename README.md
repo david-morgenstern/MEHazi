@@ -54,7 +54,11 @@ cd MEHazi
 ./teardown.sh       # stop everything and delete the data
 ```
 
-`build-all.sh` waits for each stage to *finish* rather than merely start — the
+Whether this machine reaches the internet directly or through a corporate proxy
+is something `build-all.sh` works out for itself, so the same checkout builds on
+either network with nothing to edit for one or the other.
+
+It waits for each stage to *finish* rather than merely start — the
 pipeline to exit 0, Superset to report healthy, all six of task 2's integrity
 checks to pass — and fails loudly, naming the log to read,
 if any of them does not. Running it again over a live stack is a harmless
